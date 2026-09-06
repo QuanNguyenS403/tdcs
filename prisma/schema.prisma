@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_DIRECT_URL")
+}
+
+model User {
+  id          String           @id @default(uuid()) @db.Uuid
+  email       String           @unique
+  name        String
+  image       String?
+  role        String           @default("USER")
+  planType    String           @default("NONE")
+  purchasedAt DateTime?
+  createdAt   DateTime         @default(now())
+  orders      Order[]
+  progress    LessonProgress[]
+}
+
+model Course {
+  id                  String                @id @default(uuid()) @db.Uuid
+  title               String
+  description         String?
+  instructorId        String?
+  price               Int                   @default(0)
+  thumbnailUrl        String?
+  status              String                @default("DRAFT")
+  createdAt           DateTime              @default(now())
+  lessons             Lesson[]
+  contentAccess       PackageContentAccess[]
+  orders              Order[]
+}
+
+model Lesson {
+  id          String           @id @default(uuid()) @db.Uuid
+  courseId    String           @db.Uuid
+  title       String
+  description String?
+  videoUrl    String?
+  contentUrl  String?
+  order       Int              @default(0)
+  duration    Int?
+  isPublished Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  course      Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  progress    LessonProgress[]
+
+  @@index([courseId, isPublished, order])
+}
+
+model LessonProgress {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @db.Uuid
+  lessonId      String   @db.Uuid
+  watchTime     Int      @default(0)
+  lastPosition  Int      @default(0)
+  watchedPercentage Int  @default(0)
+  completed     Boolean  @default(false)
+  lastWatched   DateTime @default(now())
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson        Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+  @@index([userId, completed])
+}
+
+model Order {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @db.Uuid
+  courseId          String   @db.Uuid
+  amount            Int
+  transferCode      String   @unique
+  status            String   @default("PENDING")
+  bankTransactionId String?
+  paidAt            DateTime?
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course            Course   @relation(fields: [courseId], references: [id])
+
+  @@index([userId, status])
+}
+
+model Package {
+  id                 String                @id @default(uuid()) @db.Uuid
+  branch             String
+  code               String                @unique
+  name               String
+  description        String?
+  priceMin           BigInt?
+  priceMax           BigInt?
+  priceFounder       BigInt?
+  contentAccessMonths Int
+  supportDays       Int?
+  requiresScreening Boolean               @default(false)
+  includesCertification Boolean            @default(false)
+  legalReviewStatus String                @default("pending")
+  features          Json                  @default("[]")
+  isActive          Boolean               @default(true)
+  createdAt         DateTime              @default(now())
+  subscriptions    Subscription[]
+  applications     Application[]
+  contentAccess    PackageContentAccess[]
+}
+
+model PackageContentAccess {
+  packageId String  @db.Uuid
+  courseId  String  @db.Uuid
+  package   Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  course    Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@id([packageId, courseId])
+}
+
+model Subscription {
+  id                      String    @id @default(uuid()) @db.Uuid
+  userId                  String    @db.Uuid
+  packageId               String    @db.Uuid
+  status                  String    @default("pending")
+  amount                  BigInt
+  paymentReference        String?   @unique
+  activatedAt             DateTime?
+  contentAccessExpiresAt  DateTime?
+  supportExpiresAt        DateTime?
+  renewalCount           Int       @default(0)
+  confirmedBy             String?   @db.Uuid
+  confirmedAt             DateTime?
+  createdAt               DateTime  @default(now())
+  package                 Package   @relation(fields: [packageId], references: [id])
+
+  @@index([userId, status, contentAccessExpiresAt])
+}
+
+model Application {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  packageId  String   @db.Uuid
+  answers    Json     @default("{}")
+  status     String   @default("pending")
+  reviewedBy String?  @db.Uuid
+  reviewedAt DateTime?
+  notes      String?
+  createdAt  DateTime @default(now())
+  package    Package  @relation(fields: [packageId], references: [id])
+
+  @@index([status, createdAt])
+}
