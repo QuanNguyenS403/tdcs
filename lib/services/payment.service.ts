@@ -11,6 +11,7 @@
 import { Order } from '@prisma/client'
 import { EventBus } from '@/lib/events/event-bus'
 import { OrderRepository } from '@/lib/repositories/order.repository'
+import { planTypeFromTransferCode } from '@/lib/repositories/order.repository'
 import { UserRepository } from '@/lib/repositories/user.repository'
 import {
   BusinessError,
@@ -198,7 +199,7 @@ export class PaymentService {
         orderId: confirmed.id,
         userId: confirmed.userId,
         amount: confirmed.amount,
-        planType: 'BASIC', // TODO: store planType in order
+        planType: planTypeFromTransferCode(confirmed.transferCode),
         email: user.email,
         name: user.name,
       })

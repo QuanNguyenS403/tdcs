@@ -15,7 +15,7 @@ const paymentService = new PaymentService(orderRepository, userRepository, event
 
 export const POST = withPostApi(
   async (req, context) => {
-    const { planType } = context.query as any
+    const { planType } = context.body as { planType: string }
 
     logger.info(
       { userId: context.session?.user?.id, planType },

@@ -140,6 +140,11 @@ BEGIN
 END;
 $$;
 
+REVOKE EXECUTE ON FUNCTION confirm_package_legal_review(UUID, TEXT)
+  FROM PUBLIC, authenticated, anon;
+GRANT EXECUTE ON FUNCTION confirm_package_legal_review(UUID, TEXT)
+  TO service_role;
+
 ALTER TABLE package_content_access ENABLE ROW LEVEL SECURITY;
 ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
 

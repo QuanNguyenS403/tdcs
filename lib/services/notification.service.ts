@@ -50,13 +50,13 @@ export class NotificationService {
   async sendWelcomeEmail(user: { email: string; name: string }): Promise<void> {
     const html = `
       <h1>Chào mừng ${user.name}!</h1>
-      <p>Bạn đã đăng ký thành công với CộtSốngEdu.</p>
+      <p>Bạn đã đăng ký thành công với Mộc Việt.</p>
       <p>Hãy bắt đầu hành trình học tập của bạn!</p>
     `
 
     await this.sendEmail({
       to: user.email,
-      subject: 'Chào mừng đến CộtSốngEdu',
+      subject: 'Chào mừng đến Mộc Việt',
       html,
     })
   }
@@ -82,7 +82,7 @@ export class NotificationService {
 
     await this.sendEmail({
       to: user.email,
-      subject: 'Xác nhận thanh toán - CộtSốngEdu',
+      subject: 'Xác nhận thanh toán - Mộc Việt',
       html,
     })
   }
@@ -103,7 +103,7 @@ export class NotificationService {
 
     await this.sendEmail({
       to: user.email,
-      subject: `Tiến độ học tập: ${percentage}% - CộtSốngEdu`,
+      subject: `Tiến độ học tập: ${percentage}% - Mộc Việt`,
       html,
     })
   }
@@ -125,7 +125,7 @@ export class NotificationService {
 
     await this.sendEmail({
       to: user.email,
-      subject: 'Chứng chỉ hoàn thành - CộtSốngEdu',
+      subject: 'Chứng chỉ hoàn thành - Mộc Việt',
       html,
     })
   }
@@ -146,7 +146,7 @@ export class NotificationService {
 
     await this.sendEmail({
       to: adminEmail,
-      subject: `[CộtSốngEdu Alert] ${alert.title}`,
+      subject: `[Mộc Việt Alert] ${alert.title}`,
       html,
     })
   }

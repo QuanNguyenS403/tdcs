@@ -30,6 +30,7 @@ import redis from '@/lib/redis'
 export interface ApiContext {
   params?: Record<string, string>
   query?: Record<string, string | string[]>
+  body?: any
   session?: any
   ip?: string
 }
@@ -166,6 +167,7 @@ export function withApi<T = any>(handler: ApiHandler<T>, options: ApiOptions = {
       const result = await handler(req, {
         params: context.params || {},
         query,
+        body,
         session,
         ip,
       })

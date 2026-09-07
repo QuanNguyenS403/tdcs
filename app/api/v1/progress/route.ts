@@ -13,8 +13,7 @@ import logger from '@/lib/logger'
 export const POST = withPostApi(
   async (req, context) => {
     const userId = context.session!.user.id
-    const body = await req.json()
-    const input = UpdateProgressSchema.parse(body)
+    const input = UpdateProgressSchema.parse(context.body)
 
     logger.info(
       { userId, lessonId: input.lessonId },

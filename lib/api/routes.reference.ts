@@ -25,7 +25,7 @@
 // POST   /api/v1/orders
 //   Create pending order for plan purchase
 //   Auth: REQUIRED
-//   Body: { planType: 'BASIC' | 'PRO' | 'EXPERT' }
+//   Body: { planType: string }
 //   Response: { orderId, transferCode, amount, bankAccount, qrUrl, expiresAt }
 //   Rate Limit: 5 req/min per user
 export interface CreateOrderResponse {

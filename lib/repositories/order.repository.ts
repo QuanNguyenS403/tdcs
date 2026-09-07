@@ -2,6 +2,23 @@ import { PrismaClient, Order, Prisma } from '@prisma/client'
 import Redis from 'ioredis'
 import { BaseRepository } from './base.repository'
 
+export function planTypeFromTransferCode(transferCode: string): string {
+  const planCode = transferCode.slice(-2)
+  const planTypes: Record<string, string> = {
+    CB: 'BASIC',
+    CN: 'PRO',
+    CG: 'EXPERT',
+    XX: 'NONE',
+  }
+  const planType = planTypes[planCode]
+
+  if (!planType) {
+    throw new Error(`Unsupported transfer code suffix: ${planCode}`)
+  }
+
+  return planType
+}
+
 export interface CreateOrderDTO {
   userId: string
   courseId: string
@@ -87,6 +104,7 @@ export class OrderRepository extends BaseRepository<Order, CreateOrderDTO, Updat
     if (!order) {
       throw new Error(`Order ${orderId} not found`)
     }
+    const planType = planTypeFromTransferCode(order.transferCode)
 
     // Atomic transaction
     const [updatedOrder, updatedUser] = await this.prisma.$transaction([
@@ -102,8 +120,7 @@ export class OrderRepository extends BaseRepository<Order, CreateOrderDTO, Updat
       this.prisma.user.update({
         where: { id: order.userId },
         data: {
-          role: 'BASIC', // Default role after purchase
-          planType: 'BASIC',
+          planType,
           purchasedAt: new Date(),
         },
       }),
