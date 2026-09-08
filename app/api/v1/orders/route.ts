@@ -15,17 +15,17 @@ const paymentService = new PaymentService(orderRepository, userRepository, event
 
 export const POST = withPostApi(
   async (req, context) => {
-    const { planType } = context.body as { planType: string }
+    const { packageCode } = context.body as { packageCode: string }
 
     logger.info(
-      { userId: context.session?.user?.id, planType },
+      { userId: context.session?.user?.id, packageCode },
       'Creating pending order'
     )
 
     try {
       const order = await paymentService.createPendingOrder(
         context.session!.user.id,
-        planType
+        packageCode
       )
 
       // Generate VietQR payment code (mock)

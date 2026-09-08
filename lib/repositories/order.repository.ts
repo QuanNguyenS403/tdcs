@@ -3,25 +3,17 @@ import Redis from 'ioredis'
 import { BaseRepository } from './base.repository'
 
 export function planTypeFromTransferCode(transferCode: string): string {
-  const planCode = transferCode.slice(-2)
-  const planTypes: Record<string, string> = {
-    CB: 'BASIC',
-    CN: 'PRO',
-    CG: 'EXPERT',
-    XX: 'NONE',
+  const packageCode = transferCode.slice(-2)
+  if (!/^[AB][1-3]$/.test(packageCode)) {
+    throw new Error(`Unsupported package code: ${packageCode}`)
   }
-  const planType = planTypes[planCode]
-
-  if (!planType) {
-    throw new Error(`Unsupported transfer code suffix: ${planCode}`)
-  }
-
-  return planType
+  return packageCode
 }
 
 export interface CreateOrderDTO {
   userId: string
-  courseId: string
+  courseId?: string
+  packageId?: string
   amount: number
   transferCode: string
   expiresAt?: Date
@@ -38,20 +30,20 @@ export class OrderRepository extends BaseRepository<Order, CreateOrderDTO, Updat
     super(prisma, redis, 'order')
   }
 
-  async findById(id: string): Promise<Order | null> {
+  async findById(id: string): Promise<(Order & { package?: any }) | null> {
     return this.getCached(`id:${id}`, 300, () =>
       this.prisma.order.findUnique({
         where: { id },
-        include: { user: true, course: true },
+        include: { user: true, course: true, package: true },
       })
     )
   }
 
-  async findByTransferCode(code: string): Promise<(Order & { user?: any; course?: any }) | null> {
+  async findByTransferCode(code: string): Promise<(Order & { user?: any; course?: any; package?: any }) | null> {
     return this.getCached(`code:${code}`, 60, () =>
       this.prisma.order.findUnique({
         where: { transferCode: code },
-        include: { user: true, course: true },
+        include: { user: true, course: true, package: true },
       })
     )
   }
@@ -61,12 +53,13 @@ export class OrderRepository extends BaseRepository<Order, CreateOrderDTO, Updat
       data: {
         userId: data.userId,
         courseId: data.courseId,
+        packageId: data.packageId,
         amount: data.amount,
         transferCode: data.transferCode,
         status: 'PENDING',
         expiresAt: data.expiresAt || new Date(Date.now() + 24 * 60 * 60 * 1000), // 24h default
       },
-      include: { user: true, course: true },
+      include: { user: true, course: true, package: true },
     })
 
     return order
@@ -106,8 +99,7 @@ export class OrderRepository extends BaseRepository<Order, CreateOrderDTO, Updat
     }
     const planType = planTypeFromTransferCode(order.transferCode)
 
-    // Atomic transaction
-    const [updatedOrder, updatedUser] = await this.prisma.$transaction([
+    const transaction: Prisma.PrismaPromise<any>[] = [
       this.prisma.order.update({
         where: { id: orderId },
         data: {
@@ -124,7 +116,28 @@ export class OrderRepository extends BaseRepository<Order, CreateOrderDTO, Updat
           purchasedAt: new Date(),
         },
       }),
-    ])
+    ]
+
+    if (order.packageId && order.package) {
+      const activatedAt = new Date()
+      transaction.push(this.prisma.subscription.create({
+        data: {
+          userId: order.userId,
+          packageId: order.packageId,
+          status: 'active',
+          amount: BigInt(order.amount),
+          paymentReference: bankTxnId,
+          activatedAt,
+          contentAccessExpiresAt: new Date(activatedAt.getTime() + order.package.contentAccessMonths * 30 * 24 * 60 * 60 * 1000),
+          supportExpiresAt: order.package.supportDays
+            ? new Date(activatedAt.getTime() + order.package.supportDays * 24 * 60 * 60 * 1000)
+            : null,
+          confirmedAt: activatedAt,
+        },
+      }))
+    }
+
+    const [updatedOrder, updatedUser] = await this.prisma.$transaction(transaction)
 
     // Invalidate related caches
     await this.invalidateCache(

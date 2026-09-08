@@ -5,7 +5,7 @@
 import { z } from 'zod'
 
 export const CreateOrderSchema = z.object({
-  planType: z.enum(['BASIC', 'PRO', 'EXPERT']).describe('Plan type to purchase'),
+  packageCode: z.enum(['A1', 'A2', 'A3', 'B1', 'B2', 'B3']).describe('Academy package code'),
 })
 
 export const GetOrderSchema = z.object({

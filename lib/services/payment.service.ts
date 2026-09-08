@@ -10,8 +10,7 @@
 
 import { Order } from '@prisma/client'
 import { EventBus } from '@/lib/events/event-bus'
-import { OrderRepository } from '@/lib/repositories/order.repository'
-import { planTypeFromTransferCode } from '@/lib/repositories/order.repository'
+import { OrderRepository, planTypeFromTransferCode } from '@/lib/repositories/order.repository'
 import { UserRepository } from '@/lib/repositories/user.repository'
 import {
   BusinessError,
@@ -25,23 +24,9 @@ import {
   OrderNotFoundError,
 } from '@/lib/errors/domain.error'
 import logger from '@/lib/logger'
+import prisma from '@/lib/prisma'
 
-// Plan pricing (VND)
-export const PLAN_PRICES: Record<string, number> = {
-  BASIC: 99000,
-  PRO: 299000,
-  EXPERT: 699000,
-  NONE: 0,
-}
-
-// Plan hierarchy for downgrade validation
-const PLAN_HIERARCHY: Record<string, number> = {
-  NONE: 0,
-  REGISTERED: 1,
-  BASIC: 2,
-  PRO: 3,
-  EXPERT: 4,
-}
+const PACKAGE_CODES = ['A1', 'A2', 'A3', 'B1', 'B2', 'B3'] as const
 
 export interface BankTransaction {
   transactionId: string
@@ -73,13 +58,19 @@ export class PaymentService {
    * 2. Prevent plan downgrade
    * 3. Generate transfer code with specific format
    */
-  async createPendingOrder(userId: string, planType: string): Promise<Order> {
-    logger.info({ userId, planType }, 'Creating pending order')
+  async createPendingOrder(userId: string, packageCode: string): Promise<Order> {
+    logger.info({ userId, packageCode }, 'Creating pending order')
 
-    // Validate plan type
-    if (!PLAN_PRICES[planType]) {
-      throw new BusinessError(`Invalid plan type: ${planType}`, 'INVALID_PLAN_TYPE')
+    if (!PACKAGE_CODES.includes(packageCode as typeof PACKAGE_CODES[number])) {
+      throw new BusinessError(`Invalid package code: ${packageCode}`, 'INVALID_PACKAGE_CODE')
     }
+
+    const academyPackage = await prisma.package.findUnique({ where: { code: packageCode } })
+    if (!academyPackage || !academyPackage.isActive) throw new NotFoundError('Package', packageCode)
+    if (academyPackage.legalReviewStatus === 'pending') {
+      throw new BusinessError('Gói học chưa hoàn tất rà soát pháp lý', 'PACKAGE_NOT_OPEN')
+    }
+    if (!academyPackage.priceFounder) throw new BusinessError('Gói học chưa có giá thanh toán', 'PACKAGE_PRICE_UNAVAILABLE')
 
     // Get user
     const user = await this.userRepo.findById(userId)
@@ -89,29 +80,23 @@ export class PaymentService {
 
     // Rule 1: Reuse active pending order if same plan
     const existingOrder = await this.orderRepo.findByTransferCode(
-      this.generateTransferCode(userId, planType)
+      this.generateTransferCode(userId, packageCode)
     )
     if (existingOrder && existingOrder.status === 'PENDING') {
       logger.info(
-        { userId, planType, orderId: existingOrder.id },
+        { userId, packageCode, orderId: existingOrder.id },
         'Reusing existing pending order'
       )
       return existingOrder
     }
 
-    // Rule 2: Prevent downgrade
-    if (this.isDowngrade(user.planType || 'NONE', planType)) {
-      throw new PlanDowngradeError(user.planType || 'NONE', planType)
-    }
-
-    // Rule 3: Generate transfer code
-    const transferCode = this.generateTransferCode(userId, planType)
+    const transferCode = this.generateTransferCode(userId, packageCode)
 
     // Create order
     const order = await this.orderRepo.create({
       userId,
-      courseId: 'system', // Placeholder for system orders
-      amount: PLAN_PRICES[planType],
+      packageId: academyPackage.id,
+      amount: Number(academyPackage.priceFounder),
       transferCode,
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
     })
@@ -234,15 +219,9 @@ export class PaymentService {
    * Generate transfer code format: CSGK{6 chars}{2 chars}
    * Example: CSGK123ABC CB
    */
-  private generateTransferCode(userId: string, planType: string): string {
+  private generateTransferCode(userId: string, packageCode: string): string {
     const shortId = userId.replace(/-/g, '').slice(0, 6).toUpperCase()
-    const planCode: Record<string, string> = {
-      BASIC: 'CB',
-      PRO: 'CN',
-      EXPERT: 'CG',
-      NONE: 'XX',
-    }
-    return `CSGK${shortId}${planCode[planType] || 'XX'}`
+    return `CSGK${shortId}${packageCode}`
   }
 
   /**
@@ -250,16 +229,8 @@ export class PaymentService {
    * Pattern: CSGK{6 alphanumeric}{2 letters}
    */
   private extractTransferCode(description: string): string | null {
-    const match = description.toUpperCase().match(/CSGK[A-Z0-9]{6}(CB|CN|CG|XX)/)
+    const match = description.toUpperCase().match(/CSGK[A-Z0-9]{6}[AB][1-3]/)
     return match ? match[0] : null
   }
 
-  /**
-   * Check if requested plan is a downgrade
-   */
-  private isDowngrade(currentPlan: string, requestedPlan: string): boolean {
-    const currentLevel = PLAN_HIERARCHY[currentPlan] || 0
-    const requestedLevel = PLAN_HIERARCHY[requestedPlan] || 0
-    return requestedLevel < currentLevel
-  }
 }

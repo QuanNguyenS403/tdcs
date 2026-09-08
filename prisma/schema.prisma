@@ -72,7 +72,8 @@ model LessonProgress {
 model Order {
   id                String   @id @default(uuid()) @db.Uuid
   userId            String   @db.Uuid
-  courseId          String   @db.Uuid
+  courseId          String?  @db.Uuid
+  packageId         String?  @db.Uuid
   amount            Int
   transferCode      String   @unique
   status            String   @default("PENDING")
@@ -81,9 +82,11 @@ model Order {
   expiresAt         DateTime
   createdAt         DateTime @default(now())
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course            Course   @relation(fields: [courseId], references: [id])
+  course            Course?  @relation(fields: [courseId], references: [id])
+  package           Package? @relation(fields: [packageId], references: [id])
 
   @@index([userId, status])
+  @@index([packageId, status])
 }
 
 model Package {
@@ -106,6 +109,7 @@ model Package {
   subscriptions    Subscription[]
   applications     Application[]
   contentAccess    PackageContentAccess[]
+  orders            Order[]
 }
 
 model PackageContentAccess {
@@ -147,6 +151,21 @@ model Application {
   notes      String?
   createdAt  DateTime @default(now())
   package    Package  @relation(fields: [packageId], references: [id])
+
+  @@index([status, createdAt])
+}
+
+model Lead {
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String
+  contact         String
+  branch          String
+  goal            String
+  experience      String?
+  preferredFormat String?
+  consent         Boolean
+  status          String   @default("new")
+  createdAt       DateTime @default(now())
 
   @@index([status, createdAt])
 }

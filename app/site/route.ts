@@ -1,12 +1,5 @@
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
+import { redirect } from 'next/navigation'
 
 export async function GET() {
-  const html = await readFile(path.join(process.cwd(), 'TĐCS.html'), 'utf8');
-
-  return new Response(html, {
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-    },
-  });
+  redirect('/tac-dong-cot-song')
 }

@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ZodError, ZodSchema } from 'zod'
 import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import {
   BusinessError,
   ValidationError,
@@ -68,7 +69,7 @@ export function withApi<T = any>(handler: ApiHandler<T>, options: ApiOptions = {
       // 1. Get session
       let session = null
       try {
-        session = await getServerSession()
+        session = await getServerSession(authOptions)
       } catch (error) {
         logger.debug({ error }, 'Failed to get session')
       }
