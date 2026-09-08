@@ -10,10 +10,15 @@ import logger from '@/lib/logger'
 
 const notificationService = new NotificationService()
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
+  // Verify cron secret (fail-closed: require configured secret)
   const cronSecret = req.headers.get('authorization')?.replace('Bearer ', '')
-  if (cronSecret !== process.env.CRON_SECRET) {
-    return jsonError('UNAUTHORIZED', 'Invalid cron secret', 401)
+  const expectedSecret = process.env.CRON_SECRET
+  if (!expectedSecret || expectedSecret.trim() === '' || cronSecret !== expectedSecret) {
+    logger.error('Unauthorized cron execution attempt or CRON_SECRET not configured')
+    return jsonError('UNAUTHORIZED', 'Invalid or unconfigured cron secret', 401)
   }
 
   try {

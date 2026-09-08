@@ -24,19 +24,25 @@ export const GET = withGetApi(
       'Admin: Fetching student list'
     )
 
-    const students = await userRepository.getStudentList({
-      plan: input.plan,
-      search: input.search,
-      offset: input.offset,
-      limit: input.limit,
-    })
+    const [students, total] = await Promise.all([
+      userRepository.getStudentList({
+        plan: input.plan,
+        search: input.search,
+        offset: input.offset,
+        limit: input.limit,
+      }),
+      userRepository.getStudentCount({
+        plan: input.plan,
+        search: input.search,
+      }),
+    ])
 
     return {
       students,
       pagination: {
         limit: input.limit,
         offset: input.offset,
-        total: students.length,
+        total,
       },
     }
   },

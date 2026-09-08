@@ -5,7 +5,7 @@
 import { z } from 'zod'
 
 export const UpdateProgressSchema = z.object({
-  lessonId: z.string().cuid('Invalid lesson ID'),
+  lessonId: z.string().uuid('Invalid lesson ID'),
   watchTimeDelta: z
     .number()
     .int()
@@ -22,7 +22,7 @@ export const UpdateProgressSchema = z.object({
 })
 
 export const GetProgressSchema = z.object({
-  courseId: z.string().cuid().optional().describe('Filter by course'),
+  courseId: z.string().uuid('Invalid course ID').optional().describe('Filter by course'),
 })
 
 export type UpdateProgressInput = z.infer<typeof UpdateProgressSchema>

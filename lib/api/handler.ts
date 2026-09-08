@@ -74,8 +74,9 @@ export function withApi<T = any>(handler: ApiHandler<T>, options: ApiOptions = {
         logger.debug({ error }, 'Failed to get session')
       }
 
-      // 2. Check authentication
-      if (options.requireAuth && !session) {
+      // 2. Check authentication (requireRole implicitly enforces requireAuth - SYS-20)
+      const requireAuth = options.requireAuth || Boolean(options.requireRole && options.requireRole.length > 0)
+      if (requireAuth && !session) {
         logger.warn({ ip, path: url.pathname }, 'Unauthorized request')
         return jsonError(
           'UNAUTHORIZED',
@@ -85,11 +86,8 @@ export function withApi<T = any>(handler: ApiHandler<T>, options: ApiOptions = {
       }
 
       // 3. Check authorization (role)
-      if (options.requireRole && session) {
-        const user = session.user as typeof session.user & {
-          id?: string
-          role?: string
-        }
+      if (options.requireRole && options.requireRole.length > 0) {
+        const user = session?.user as { id?: string; role?: string } | undefined
         const userRole = user?.role || 'USER'
         const hasRole = options.requireRole.includes(userRole)
 
@@ -118,11 +116,14 @@ export function withApi<T = any>(handler: ApiHandler<T>, options: ApiOptions = {
 
         if (!result.allowed) {
           logger.warn({ ip, path: url.pathname, remaining: result.remaining }, 'Rate limit exceeded')
-          return jsonError(
+          const retryAfter = Math.max(1, Math.ceil((result.resetAt.getTime() - Date.now()) / 1000))
+          const response = jsonError(
             'RATE_LIMITED',
             'Quá nhiều request. Vui lòng thử lại sau.',
             429
           )
+          response.headers.set('Retry-After', String(retryAfter))
+          return response
         }
       }
 
@@ -133,6 +134,10 @@ export function withApi<T = any>(handler: ApiHandler<T>, options: ApiOptions = {
           const json = await req.json()
           body = options.validateBody.parse(json)
         } catch (error) {
+          if (error instanceof SyntaxError) {
+            logger.warn({ error, path: url.pathname }, 'Malformed JSON body')
+            return jsonError('BAD_REQUEST', 'Định dạng JSON không hợp lệ', 400)
+          }
           if (error instanceof ZodError) {
             const fields = error.errors.map(e => ({
               field: e.path.join('.'),

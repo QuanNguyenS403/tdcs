@@ -82,8 +82,22 @@ ON CONFLICT (code) DO UPDATE SET
   content_access_months = EXCLUDED.content_access_months,
   support_days = EXCLUDED.support_days,
   requires_screening = EXCLUDED.requires_screening,
-  includes_certification = EXCLUDED.includes_certification,
-  legal_review_status = EXCLUDED.legal_review_status;
+  includes_certification = EXCLUDED.includes_certification;
+
+CREATE TABLE IF NOT EXISTS payment_transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID REFERENCES orders(id),
+  provider TEXT NOT NULL DEFAULT 'casso',
+  provider_transaction_id TEXT NOT NULL,
+  amount BIGINT NOT NULL,
+  description TEXT NOT NULL,
+  sender_name TEXT,
+  transaction_date TIMESTAMPTZ NOT NULL,
+  status TEXT NOT NULL DEFAULT 'PROCESSED',
+  raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT payment_transactions_provider_txn_unique UNIQUE (provider, provider_transaction_id)
+);
 
 CREATE INDEX IF NOT EXISTS subscriptions_user_active_idx
   ON subscriptions (user_id, status, content_access_expires_at);
@@ -179,21 +193,16 @@ CREATE POLICY "admin_all_access" ON users
     EXISTS (SELECT 1 FROM users WHERE id = auth.uid()::text AND role = 'ADMIN')
   );
 
--- Supabase Storage policies for course-videos bucket
-CREATE POLICY "authenticated_read_videos" ON storage.objects
-  FOR SELECT
-  USING (bucket_id = 'course-videos' AND auth.role() = 'authenticated');
-
+-- Supabase Storage: course-videos and course-documents buckets are strictly PRIVATE.
+-- Client access requires server-verified entitlement and short-lived signed URLs.
+-- Only Admin can manage files directly in storage.
+DROP POLICY IF EXISTS "authenticated_read_videos" ON storage.objects;
 CREATE POLICY "admin_manage_videos" ON storage.objects
   FOR ALL
   USING (bucket_id = 'course-videos' AND 
     EXISTS (SELECT 1 FROM users WHERE id = auth.uid()::text AND role = 'ADMIN'));
 
--- Supabase Storage policies for course-documents bucket
-CREATE POLICY "authenticated_read_documents" ON storage.objects
-  FOR SELECT
-  USING (bucket_id = 'course-documents' AND auth.role() = 'authenticated');
-
+DROP POLICY IF EXISTS "authenticated_read_documents" ON storage.objects;
 CREATE POLICY "admin_manage_documents" ON storage.objects
   FOR ALL
   USING (bucket_id = 'course-documents' AND 

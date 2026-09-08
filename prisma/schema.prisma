@@ -9,150 +9,167 @@ datasource db {
 }
 
 model User {
-  id          String           @id @default(uuid()) @db.Uuid
-  email       String           @unique
-  name        String
-  image       String?
-  role        String           @default("USER")
-  planType    String           @default("NONE")
-  purchasedAt DateTime?
-  createdAt   DateTime         @default(now())
-  orders      Order[]
-  progress    LessonProgress[]
+  id            String           @id @default(uuid()) @db.Uuid
+  email         String           @unique
+  name          String
+  image         String?
+  role          String           @default("USER")
+  planType      String           @default("NONE") @map("plan_type")
+  purchasedAt   DateTime?        @map("purchased_at")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  orders        Order[]
+  progress      LessonProgress[]
+  subscriptions Subscription[]
+  applications  Application[]
+
+  @@map("users")
 }
 
 model Course {
-  id                  String                @id @default(uuid()) @db.Uuid
-  title               String
-  description         String?
-  instructorId        String?
-  price               Int                   @default(0)
-  thumbnailUrl        String?
-  status              String                @default("DRAFT")
-  createdAt           DateTime              @default(now())
-  lessons             Lesson[]
-  contentAccess       PackageContentAccess[]
-  orders              Order[]
+  id            String                 @id @default(uuid()) @db.Uuid
+  title         String
+  description   String?
+  instructorId  String?                @map("instructor_id") @db.Uuid
+  price         Int                    @default(0)
+  thumbnailUrl  String?                @map("thumbnail_url")
+  status        String                 @default("DRAFT")
+  createdAt     DateTime               @default(now()) @map("created_at")
+  lessons       Lesson[]
+  contentAccess PackageContentAccess[]
+  orders        Order[]
+
+  @@map("courses")
 }
 
 model Lesson {
   id          String           @id @default(uuid()) @db.Uuid
-  courseId    String           @db.Uuid
+  courseId    String           @map("course_id") @db.Uuid
   title       String
   description String?
-  videoUrl    String?
-  contentUrl  String?
+  videoUrl    String?          @map("video_url")
+  contentUrl  String?          @map("content_url")
   order       Int              @default(0)
   duration    Int?
-  isPublished Boolean          @default(false)
-  createdAt   DateTime         @default(now())
+  isPublished Boolean          @default(false) @map("is_published")
+  createdAt   DateTime         @default(now()) @map("created_at")
   course      Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
   progress    LessonProgress[]
 
   @@index([courseId, isPublished, order])
+  @@map("lessons")
 }
 
 model LessonProgress {
-  id            String   @id @default(uuid()) @db.Uuid
-  userId        String   @db.Uuid
-  lessonId      String   @db.Uuid
-  watchTime     Int      @default(0)
-  lastPosition  Int      @default(0)
-  watchedPercentage Int  @default(0)
-  completed     Boolean  @default(false)
-  lastWatched   DateTime @default(now())
-  createdAt     DateTime @default(now())
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  lesson        Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  lessonId          String   @map("lesson_id") @db.Uuid
+  watchTime         Int      @default(0) @map("watch_time")
+  lastPosition      Int      @default(0) @map("last_position")
+  watchedPercentage Int      @default(0) @map("watched_percentage")
+  completed         Boolean  @default(false)
+  lastWatched       DateTime @default(now()) @map("last_watched")
+  createdAt         DateTime @default(now()) @map("created_at")
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson            Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
 
   @@unique([userId, lessonId])
   @@index([userId, completed])
+  @@map("lesson_progress")
 }
 
 model Order {
-  id                String   @id @default(uuid()) @db.Uuid
-  userId            String   @db.Uuid
-  courseId          String?  @db.Uuid
-  packageId         String?  @db.Uuid
-  amount            Int
-  transferCode      String   @unique
-  status            String   @default("PENDING")
-  bankTransactionId String?
-  paidAt            DateTime?
-  expiresAt         DateTime
-  createdAt         DateTime @default(now())
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course            Course?  @relation(fields: [courseId], references: [id])
-  package           Package? @relation(fields: [packageId], references: [id])
+  id                  String               @id @default(uuid()) @db.Uuid
+  userId              String               @map("user_id") @db.Uuid
+  courseId            String?              @map("course_id") @db.Uuid
+  packageId           String?              @map("package_id") @db.Uuid
+  amount              Int
+  transferCode        String               @unique @map("transfer_code")
+  status              String               @default("PENDING")
+  bankTransactionId   String?              @map("bank_transaction_id")
+  paidAt              DateTime?            @map("paid_at")
+  expiresAt           DateTime             @map("expires_at")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course              Course?              @relation(fields: [courseId], references: [id])
+  package             Package?             @relation(fields: [packageId], references: [id])
+  paymentTransactions PaymentTransaction[]
 
   @@index([userId, status])
   @@index([packageId, status])
+  @@map("orders")
 }
 
 model Package {
-  id                 String                @id @default(uuid()) @db.Uuid
-  branch             String
-  code               String                @unique
-  name               String
-  description        String?
-  priceMin           BigInt?
-  priceMax           BigInt?
-  priceFounder       BigInt?
-  contentAccessMonths Int
-  supportDays       Int?
-  requiresScreening Boolean               @default(false)
-  includesCertification Boolean            @default(false)
-  legalReviewStatus String                @default("pending")
-  features          Json                  @default("[]")
-  isActive          Boolean               @default(true)
-  createdAt         DateTime              @default(now())
-  subscriptions    Subscription[]
-  applications     Application[]
-  contentAccess    PackageContentAccess[]
-  orders            Order[]
+  id                    String                 @id @default(uuid()) @db.Uuid
+  branch                String
+  code                  String                 @unique
+  name                  String
+  description           String?
+  priceMin              BigInt?                @map("price_min")
+  priceMax              BigInt?                @map("price_max")
+  priceFounder          BigInt?                @map("price_founder")
+  contentAccessMonths   Int                    @map("content_access_months")
+  supportDays           Int?                   @map("support_days")
+  requiresScreening     Boolean                @default(false) @map("requires_screening")
+  includesCertification Boolean                @default(false) @map("includes_certification")
+  legalReviewStatus     String                 @default("pending") @map("legal_review_status")
+  features              Json                   @default("[]")
+  isActive              Boolean                @default(true) @map("is_active")
+  createdAt             DateTime               @default(now()) @map("created_at")
+  subscriptions         Subscription[]
+  applications          Application[]
+  contentAccess         PackageContentAccess[]
+  orders                Order[]
+
+  @@map("packages")
 }
 
 model PackageContentAccess {
-  packageId String  @db.Uuid
-  courseId  String  @db.Uuid
+  packageId String  @map("package_id") @db.Uuid
+  courseId  String  @map("course_id") @db.Uuid
   package   Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
   course    Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@id([packageId, courseId])
+  @@map("package_content_access")
 }
 
 model Subscription {
-  id                      String    @id @default(uuid()) @db.Uuid
-  userId                  String    @db.Uuid
-  packageId               String    @db.Uuid
-  status                  String    @default("pending")
-  amount                  BigInt
-  paymentReference        String?   @unique
-  activatedAt             DateTime?
-  contentAccessExpiresAt  DateTime?
-  supportExpiresAt        DateTime?
-  renewalCount           Int       @default(0)
-  confirmedBy             String?   @db.Uuid
-  confirmedAt             DateTime?
-  createdAt               DateTime  @default(now())
-  package                 Package   @relation(fields: [packageId], references: [id])
+  id                     String    @id @default(uuid()) @db.Uuid
+  userId                 String    @map("user_id") @db.Uuid
+  packageId              String    @map("package_id") @db.Uuid
+  status                 String    @default("pending")
+  amount                 BigInt
+  paymentReference       String?   @unique @map("payment_reference")
+  activatedAt            DateTime? @map("activated_at")
+  contentAccessExpiresAt DateTime? @map("content_access_expires_at")
+  supportExpiresAt       DateTime? @map("support_expires_at")
+  renewalCount           Int       @default(0) @map("renewal_count")
+  confirmedBy            String?   @map("confirmed_by") @db.Uuid
+  confirmedAt            DateTime? @map("confirmed_at")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  package                Package   @relation(fields: [packageId], references: [id])
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status, contentAccessExpiresAt])
+  @@map("subscriptions")
 }
 
 model Application {
-  id         String   @id @default(uuid()) @db.Uuid
-  userId     String   @db.Uuid
-  packageId  String   @db.Uuid
-  answers    Json     @default("{}")
-  status     String   @default("pending")
-  reviewedBy String?  @db.Uuid
-  reviewedAt DateTime?
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  packageId  String    @map("package_id") @db.Uuid
+  answers    Json      @default("{}")
+  status     String    @default("pending")
+  reviewedBy String?   @map("reviewed_by") @db.Uuid
+  reviewedAt DateTime? @map("reviewed_at")
   notes      String?
-  createdAt  DateTime @default(now())
-  package    Package  @relation(fields: [packageId], references: [id])
+  createdAt  DateTime  @default(now()) @map("created_at")
+  package    Package   @relation(fields: [packageId], references: [id])
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([status, createdAt])
+  @@map("applications")
 }
 
 model Lead {
@@ -162,10 +179,29 @@ model Lead {
   branch          String
   goal            String
   experience      String?
-  preferredFormat String?
+  preferredFormat String?  @map("preferred_format")
   consent         Boolean
   status          String   @default("new")
-  createdAt       DateTime @default(now())
+  createdAt       DateTime @default(now()) @map("created_at")
 
   @@index([status, createdAt])
+  @@map("leads")
+}
+
+model PaymentTransaction {
+  id                    String   @id @default(uuid()) @db.Uuid
+  orderId               String?  @map("order_id") @db.Uuid
+  provider              String   @default("casso")
+  providerTransactionId String   @map("provider_transaction_id")
+  amount                BigInt
+  description           String
+  senderName            String?  @map("sender_name")
+  transactionDate       DateTime @map("transaction_date")
+  status                String   @default("PROCESSED")
+  rawPayload            Json     @default("{}") @map("raw_payload")
+  createdAt             DateTime @default(now()) @map("created_at")
+  order                 Order?   @relation(fields: [orderId], references: [id])
+
+  @@unique([provider, providerTransactionId])
+  @@map("payment_transactions")
 }

@@ -1,11 +1,33 @@
 import { Redis } from 'ioredis'
 
-const redis = new Redis(process.env.REDIS_URL!, {
-  maxRetriesPerRequest: 3,
-  enableReadyCheck: true,
-  lazyConnect: true,
-  retryStrategy: (times) => Math.min(times * 100, 3000)
-})
+/**
+ * Singleton Redis client.
+ * Gracefully handles missing REDIS_URL in development by returning
+ * a stub that always rejects — callers (rate limiter) have fail-open logic.
+ */
+function createRedisClient(): Redis {
+  const url = process.env.REDIS_URL
+  if (!url) {
+    // Return a stub instance that will fail on every call.
+    // RateLimiter.check() catches errors and fail-opens, so this is safe.
+    console.warn('[redis] REDIS_URL not set — rate limiting disabled (fail-open)')
+  }
+
+  const client = new Redis(url || 'redis://127.0.0.1:6379', {
+    maxRetriesPerRequest: null, // Don't retry indefinitely — fail fast
+    enableReadyCheck: false,    // Don't block on ready
+    lazyConnect: true,          // Don't connect until first command
+    retryStrategy: () => null,  // Give up immediately when no real server
+  })
+
+  client.on('error', () => {
+    // Suppress ioredis error events so Node doesn't crash with unhandled error
+  })
+
+  return client
+}
+
+const redis = createRedisClient()
 
 // Key patterns:
 // "session:{userId}"          — TTL: 24h

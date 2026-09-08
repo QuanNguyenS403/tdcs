@@ -106,14 +106,23 @@ export class UserRepository extends BaseRepository<User, CreateUserDTO, UpdateUs
     const where: Prisma.UserWhereInput = {}
 
     if (filters.plan && filters.plan !== 'ALL') {
-      where.planType = filters.plan
+      where.OR = [
+        { planType: filters.plan },
+        { subscriptions: { some: { package: { code: filters.plan } } } },
+      ]
     }
 
     if (filters.search) {
-      where.OR = [
-        { name: { contains: filters.search, mode: 'insensitive' } },
-        { email: { contains: filters.search, mode: 'insensitive' } },
+      const searchCondition = [
+        { name: { contains: filters.search, mode: 'insensitive' as const } },
+        { email: { contains: filters.search, mode: 'insensitive' as const } },
       ]
+      if (where.OR) {
+        where.AND = [{ OR: where.OR }, { OR: searchCondition }]
+        delete where.OR
+      } else {
+        where.OR = searchCondition
+      }
     }
 
     return this.prisma.user.findMany({
@@ -138,6 +147,32 @@ export class UserRepository extends BaseRepository<User, CreateUserDTO, UpdateUs
         },
       },
     })
+  }
+
+  async getStudentCount(filters: { plan?: string; search?: string }): Promise<number> {
+    const where: Prisma.UserWhereInput = {}
+
+    if (filters.plan && filters.plan !== 'ALL') {
+      where.OR = [
+        { planType: filters.plan },
+        { subscriptions: { some: { package: { code: filters.plan } } } },
+      ]
+    }
+
+    if (filters.search) {
+      const searchCondition = [
+        { name: { contains: filters.search, mode: 'insensitive' as const } },
+        { email: { contains: filters.search, mode: 'insensitive' as const } },
+      ]
+      if (where.OR) {
+        where.AND = [{ OR: where.OR }, { OR: searchCondition }]
+        delete where.OR
+      } else {
+        where.OR = searchCondition
+      }
+    }
+
+    return this.prisma.user.count({ where })
   }
 
   async getUserStats(userId: string) {

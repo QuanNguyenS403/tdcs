@@ -30,39 +30,51 @@ export class RateLimiter {
     key: string,
     options: RateLimitOptions
   ): Promise<RateLimitResult> {
+    // If Redis is not configured in development, fail-open immediately without logging errors
+    if (!process.env.REDIS_URL) {
+      return {
+        allowed: true,
+        limit: options.max,
+        remaining: options.max,
+        resetAt: new Date(Date.now() + options.window * 1000),
+      }
+    }
+
     const fullKey = `${options.keyPrefix || 'rate-limit'}:${key}`
     const now = Date.now()
 
     try {
-      // Lua script for atomic operation
+      // Atomic Lua script: INCR and check against limit
       const script = `
         local key = KEYS[1]
         local limit = tonumber(ARGV[1])
         local window = tonumber(ARGV[2])
         local now = tonumber(ARGV[3])
         
-        local current = redis.call('GET', key)
-        if not current then
-          redis.call('SET', key, 1)
+        local current = redis.call('INCR', key)
+        if current == 1 then
           redis.call('EXPIRE', key, window)
-          return {1, limit - 1, now + window * 1000}
         end
         
-        current = tonumber(current)
-        if current >= limit then
-          local ttl = redis.call('TTL', key)
-          return {current, 0, now + ttl * 1000}
+        local ttl = redis.call('TTL', key)
+        if ttl < 0 then
+          redis.call('EXPIRE', key, window)
+          ttl = window
         end
         
-        current = current + 1
-        redis.call('INCR', key)
-        return {current, limit - current, now + window * 1000}
+        local resetAt = now + ttl * 1000
+        
+        if current > limit then
+          return {0, current, 0, resetAt}
+        else
+          return {1, current, limit - current, resetAt}
+        end
       `
 
       const result = await this.redis.eval(script, 1, fullKey, options.max, options.window, now)
-      const [requests, remaining, resetAt] = result as number[]
+      const [allowedCode, requests, remaining, resetAt] = result as number[]
 
-      const allowed = requests <= options.max
+      const allowed = allowedCode === 1
 
       logger.debug(
         { key, requests, limit: options.max, allowed },

@@ -10,6 +10,12 @@ export function planTypeFromTransferCode(transferCode: string): string {
   return packageCode
 }
 
+function addCalendarMonths(date: Date, months: number): Date {
+  const result = new Date(date.getTime())
+  result.setMonth(result.getMonth() + months)
+  return result
+}
+
 export interface CreateOrderDTO {
   userId: string
   courseId?: string
@@ -30,21 +36,23 @@ export class OrderRepository extends BaseRepository<Order, CreateOrderDTO, Updat
     super(prisma, redis, 'order')
   }
 
-  async findById(id: string): Promise<(Order & { package?: any }) | null> {
+  async findById(id: string, bypassCache: boolean = false): Promise<(Order & { user?: any; course?: any; package?: any }) | null> {
     return this.getCached(`id:${id}`, 300, () =>
       this.prisma.order.findUnique({
         where: { id },
         include: { user: true, course: true, package: true },
-      })
+      }),
+      bypassCache
     )
   }
 
-  async findByTransferCode(code: string): Promise<(Order & { user?: any; course?: any; package?: any }) | null> {
+  async findByTransferCode(code: string, bypassCache: boolean = false): Promise<(Order & { user?: any; course?: any; package?: any }) | null> {
     return this.getCached(`code:${code}`, 60, () =>
       this.prisma.order.findUnique({
         where: { transferCode: code },
         include: { user: true, course: true, package: true },
-      })
+      }),
+      bypassCache
     )
   }
 
@@ -87,65 +95,84 @@ export class OrderRepository extends BaseRepository<Order, CreateOrderDTO, Updat
   }
 
   /**
-   * Confirm payment atomically: update order status and user plan
+   * Confirm payment atomically with strict idempotency and conditional update:
+   * 1. Only transitions from PENDING -> COMPLETED
+   * 2. Preserves User administrative role
+   * 3. Uses calendar months calculation for content access expiration
    */
   async confirmPayment(
     orderId: string,
     bankTxnId: string
   ): Promise<{ order: Order; user: any }> {
-    const order = await this.findById(orderId)
+    const order = await this.findById(orderId, true)
     if (!order) {
       throw new Error(`Order ${orderId} not found`)
     }
-    const planType = planTypeFromTransferCode(order.transferCode)
 
-    const transaction: Prisma.PrismaPromise<any>[] = [
-      this.prisma.order.update({
-        where: { id: orderId },
+    if (order.status !== 'PENDING') {
+      throw new Error(`Order ${orderId} is not in PENDING status (current: ${order.status})`)
+    }
+
+    const planType = planTypeFromTransferCode(order.transferCode)
+    const activatedAt = new Date()
+
+    return await this.prisma.$transaction(async (tx) => {
+      // 1. Conditional update to prevent double-confirmation race condition
+      const updateCount = await tx.order.updateMany({
+        where: { id: orderId, status: 'PENDING' },
         data: {
           status: 'COMPLETED',
           bankTransactionId: bankTxnId,
-          paidAt: new Date(),
+          paidAt: activatedAt,
         },
-        include: { course: true },
-      }),
-      this.prisma.user.update({
+      })
+
+      if (updateCount.count === 0) {
+        throw new Error(`Order ${orderId} status changed concurrently`)
+      }
+
+      // 2. Fetch fresh order
+      const updatedOrder = await tx.order.findUniqueOrThrow({
+        where: { id: orderId },
+        include: { course: true, package: true },
+      })
+
+      // 3. Update User plan info without altering administrative role
+      const updatedUser = await tx.user.update({
         where: { id: order.userId },
         data: {
           planType,
-          purchasedAt: new Date(),
+          purchasedAt: activatedAt,
         },
-      }),
-    ]
+      })
 
-    if (order.packageId && order.package) {
-      const activatedAt = new Date()
-      transaction.push(this.prisma.subscription.create({
-        data: {
-          userId: order.userId,
-          packageId: order.packageId,
-          status: 'active',
-          amount: BigInt(order.amount),
-          paymentReference: bankTxnId,
-          activatedAt,
-          contentAccessExpiresAt: new Date(activatedAt.getTime() + order.package.contentAccessMonths * 30 * 24 * 60 * 60 * 1000),
-          supportExpiresAt: order.package.supportDays
-            ? new Date(activatedAt.getTime() + order.package.supportDays * 24 * 60 * 60 * 1000)
-            : null,
-          confirmedAt: activatedAt,
-        },
-      }))
-    }
+      // 4. Create active subscription with calendar months
+      if (order.packageId && order.package) {
+        const contentAccessExpiresAt = addCalendarMonths(activatedAt, order.package.contentAccessMonths)
+        const supportExpiresAt = order.package.supportDays
+          ? new Date(activatedAt.getTime() + order.package.supportDays * 24 * 60 * 60 * 1000)
+          : null
 
-    const [updatedOrder, updatedUser] = await this.prisma.$transaction(transaction)
+        await tx.subscription.create({
+          data: {
+            userId: order.userId,
+            packageId: order.packageId,
+            status: 'active',
+            amount: BigInt(order.amount),
+            paymentReference: bankTxnId,
+            activatedAt,
+            contentAccessExpiresAt,
+            supportExpiresAt,
+            confirmedAt: activatedAt,
+          },
+        })
+      }
 
-    // Invalidate related caches
-    await this.invalidateCache(
-      `id:${orderId}`,
-      `code:${order.transferCode}`
-    )
-
-    return { order: updatedOrder, user: updatedUser }
+      return { order: updatedOrder, user: updatedUser }
+    }).finally(async () => {
+      // Invalidate related caches
+      await this.invalidateCache(`id:${orderId}`, `code:${order.transferCode}`)
+    })
   }
 
   /**
@@ -164,8 +191,9 @@ export class OrderRepository extends BaseRepository<Order, CreateOrderDTO, Updat
       },
     })
 
-    // Invalidate pattern cache
+    // Invalidate pattern cache for both code:* and id:*
     await this.invalidateCachePattern('code:*')
+    await this.invalidateCachePattern('id:*')
 
     return result.count
   }

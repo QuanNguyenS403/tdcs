@@ -26,7 +26,7 @@ export const SearchLessonsSchema = z.object({
     .min(1, 'Search query required')
     .max(100)
     .describe('Search query'),
-  courseId: z.string().cuid().optional().describe('Filter by course'),
+  courseId: z.string().uuid('Invalid course ID').optional().describe('Filter by course'),
   limit: z
     .string()
     .transform(Number)

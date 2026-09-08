@@ -32,7 +32,7 @@ export const ExportStudentsSchema = z.object({
     .default('xlsx')
     .describe('Export format'),
   plan: z
-    .enum(['ALL', 'BASIC', 'PRO', 'EXPERT'])
+    .enum(['ALL', 'A1', 'A2', 'A3', 'B1', 'B2', 'B3', 'BASIC', 'PRO', 'EXPERT'])
     .default('ALL')
     .describe('Filter by plan'),
   search: z
@@ -44,12 +44,18 @@ export const ExportStudentsSchema = z.object({
 
 export const ListStudentsSchema = z.object({
   plan: z
-    .enum(['ALL', 'BASIC', 'PRO', 'EXPERT'])
+    .enum(['ALL', 'A1', 'A2', 'A3', 'B1', 'B2', 'B3', 'BASIC', 'PRO', 'EXPERT'])
     .default('ALL')
     .optional(),
   search: z.string().max(100).optional(),
-  limit: z.number().int().min(1).max(100).default(20),
-  offset: z.number().int().min(0).default(0),
+  limit: z.preprocess(
+    (val) => (val === undefined || val === null || val === '' ? 20 : Number(val)),
+    z.number().int().min(1).max(100).default(20)
+  ),
+  offset: z.preprocess(
+    (val) => (val === undefined || val === null || val === '' ? 0 : Number(val)),
+    z.number().int().min(0).default(0)
+  ),
 })
 
 export type ManualUpgradeInput = z.infer<typeof ManualUpgradeSchema>

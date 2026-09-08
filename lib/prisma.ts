@@ -19,15 +19,6 @@ if (process.env.NODE_ENV === 'production') {
 
 export default prisma
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  await prisma.$disconnect()
-})
-
-process.on('SIGINT', async () => {
-  await prisma.$disconnect()
-})
-
 declare global {
   var prisma: PrismaClient | undefined
 }

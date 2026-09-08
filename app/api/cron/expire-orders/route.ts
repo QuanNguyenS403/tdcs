@@ -11,13 +11,16 @@ import { orderRepository } from '@/lib/container'
 import { jsonError, jsonResponse, successResponse } from '@/lib/api/response'
 import logger from '@/lib/logger'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   try {
-    // Verify cron secret
+    // Verify cron secret (fail-closed: require configured secret)
     const cronSecret = req.headers.get('authorization')?.replace('Bearer ', '')
-    if (cronSecret !== process.env.CRON_SECRET) {
-      logger.error('Invalid cron secret')
-      return jsonError('UNAUTHORIZED', 'Invalid cron secret', 401)
+    const expectedSecret = process.env.CRON_SECRET
+    if (!expectedSecret || expectedSecret.trim() === '' || cronSecret !== expectedSecret) {
+      logger.error('Unauthorized cron execution attempt or CRON_SECRET not configured')
+      return jsonError('UNAUTHORIZED', 'Invalid or unconfigured cron secret', 401)
     }
 
     logger.info('Cron job: Expiring stale orders')
